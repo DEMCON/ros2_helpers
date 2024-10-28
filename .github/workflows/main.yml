@@ -1,0 +1,38 @@
+on:
+  workflow_dispatch: # Allow running the workflow manually from the GitHub UI
+  push:
+    tags:
+      - '*'
+
+env:
+  NuGetDirectory: ${{ github.workspace}}/nuget
+  
+jobs:
+  build:
+    runs-on: windows-latest
+    name: Update NuGet package
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+           fetch-depth: 0 # Get all history to allow automatic versioning using MinVer
+
+      # Create the NuGet package in the folder from the environment variable NuGetDirectory
+      - name: Build solution and generate NuGet package
+        run: dotnet pack --configuration Release --output ${{ env.NuGetDirectory }}
+
+    # Publish the NuGet package as an artifact, so they can be used in the following jobs
+      - name: store artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget
+          if-no-files-found: error
+          retention-days: 7
+          path: ${{ env.NuGetDirectory }}/*.nupkg
+
+      - name: Publish NuGet package
+        run: |
+          foreach($file in (Get-ChildItem "${{ env.NuGetDirectory }}" -Recurse -Include *.nupkg)) {
+              dotnet nuget push $file -k ${{ secrets.GITHUB_TOKEN }} -s https://nuget.pkg.github.com/Demcon/index.json --skip-duplicate --no-symbols 
+          }
